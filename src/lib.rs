@@ -2,13 +2,16 @@
 #![feature(type_alias_impl_trait)]
 #![feature(impl_trait_in_fn_trait_return)]
 
-use core::{Functor, Monad, Unwrap};
+use core::{Applicative, Functor, Monad, Unwrap};
 use std::{future::{self, Future}, ops::Deref, pin::Pin, time::Duration};
 use anyhow::{anyhow, Result};
 use futures::{FutureExt};
 use tokio::time::sleep;
 
 pub mod core;
+
+#[macro_use]
+pub mod macros;
 
 
 pub trait MonadError<'a, E> : Monad<'a>
@@ -62,11 +65,20 @@ impl Functor<'static> for TaskF
     }
 }
 
-impl Monad<'static> for TaskF
+impl Applicative<'static> for TaskF
 {
+
     fn pure<A: 'static>(a: A) -> Self::of<A> {
         Task(Box::pin(future::ready(Ok(a))))
     }
+    
+    fn funmap<A: 'static, B: 'static>(f: Self::of<impl Fn(A) -> B + 'static + 'static + Copy>) -> impl Fn(Self::of<A>) -> Self::of<B> {
+        |a| todo!()
+    }
+}
+
+impl Monad<'static> for TaskF
+{
 
     fn bind<A,B,F>(a: Self::of<A>, f: F) -> Self::of<B>
         where

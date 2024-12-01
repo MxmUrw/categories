@@ -1,4 +1,7 @@
 
+
+use crate::*;
+
 ///////////////////////////////////////
 // Generic
 
@@ -24,9 +27,14 @@ pub trait Functor<'a>
     // fn uncoe<A>(a: <Self::of<A> as Unwrap<'a>>::A) -> A;
 }
 
-pub trait Monad<'a> : Functor<'a>
+pub trait Applicative<'a> : Functor<'a>
 {
     fn pure<A: 'a>(a: A) -> Self::of<A>;
+    fn funmap<A: 'a, B: 'a>(f: Self::of<impl Fn(A) -> B + 'a + 'static + Copy>) -> impl Fn(Self::of<A>) -> Self::of<B>;
+}
+
+pub trait Monad<'a> : Applicative<'a>
+{
     fn bind<A,B,F>(a: Self::of<A>, f: F) -> Self::of<B>
         where F : Fn(A) -> Self::of<B>,
             A: 'a, B: 'a, F: 'a;
@@ -42,6 +50,16 @@ pub trait StrongMonad<'a> : Monad<'a>
     }
 }
 
+pub trait Traversable<'a> : Functor<'a>
+{
+    fn foldr<A: 'a, B: 'a>(f: impl Fn(A,B) -> B, b: B, ta: Self::of<A>) -> B;
+
+    declare_many!
+    {
+        // [ foldr for (A B : 'a). (f : (A , B) -> B) (b : B) (ta : Self[A]) : B = ()]
+        [ sequence for (A : 'a) (F : Applicative<'a>). (xs : Self[F[A]]) : F[Self[A]] = () ]
+    }
+}
 
 ///////////////////////////////////////
 // Type inference
@@ -95,11 +113,27 @@ impl<'a> Functor<'a> for SymOption
     }
 }
 
+impl<'a> Applicative<'a> for SymOption
+{
+    define_many!
+    {
+        [ pure for (A : 'a). (a : A) : Self[A]
+        = Some(a)
+        ]
+
+        [ funmap for (A B : 'a). (f: Self[A -> B]) : Self[A] -> Self[B]
+        | Some(a) => f.map(move |f| f(a))
+        | None => None
+        ]
+    }
+    
+    // fn funmap<A: 'a, B: 'a>(f: Self::of<impl Fn(A) -> B + 'a>, aa: Self::of<A>) -> Self::of<B> {
+    //     f.map(|f| f(aa))
+    // }
+}
+
 impl<'a> Monad<'a> for SymOption
 {
-    fn pure<A: 'a>(a: A) -> Self::of<A> {
-        Some(a)
-    }
 
     fn bind<A: 'a, B: 'a ,F: 'a>(a: Self::of<A>, f: F) -> Self::of<B>
         where F : Fn(A) -> Self::of<B> 
@@ -129,209 +163,49 @@ pub fn mapm
 }
 
 
+// Vector
+pub struct SymVec {}
 
-////////////////////////////////////////
-// helpers
-
-macro_rules! mdo {
-    ($expr:expr) => {$expr};
-    (let $var:ident = $expr:expr; $($expr2:tt)+ ) => {
-        {
-            let $var = $expr;   
-            mdo!($($expr2)+)
-        }
-    };
-    ($var:ident <= $expr:expr; $($expr2:tt)+) => {
-        $expr.obind(move |$var| mdo!($($expr2)+))
-    };
-}
-
-
-
-//-- definitions
-macro_rules! define {
-
-    ($fn_name:ident : $type:ty = $($tokens:tt)+) => {
-
-        #[allow(unused)]
-        fn $fn_name() -> $type {
-            define_expr!($($tokens)+)
-        }
-
-    };
-}
-
-macro_rules! define2 {
-    // ($fn_name:ident : $($tokens:tt)+) => {
-    //     type_and_term!{define2callback, {args= {name=$fn_name} } [] $($tokens)+}
-    // };
-
-    ($fn_name:ident $(($var:ident : $($type:tt)+))* : $($tokens:tt)+) => {
-        type_and_term!{define2callback, {args= {name=$fn_name} {direct_vars= $(($var : $($type)+))*} } [] $($tokens)+}
-    };
-}
-
-macro_rules! define2callback {
-
-    ({name = $fn_name:ident} 
-        {direct_vars= $(($var_name:ident : $($var_type:tt)+))*}
-        {type = $($type:tt)+} {expr = $($expr:tt)+}) => {
-
-        #[allow(unused)]
-        fn $fn_name(
-            $(
-                $var_name : make_type_top!($($var_type)+)
-            ),*
-
-        ) -> make_type_top!($($type)+) {
-            define_expr!($($expr)+)
-        }
-
-    };
-
-    ({name = $fn_name:ident}
-        {direct_vars= $(($var_name:ident : $($var_type:tt)+))*}
-         {type = $($type:tt)+} 
-         {exprs= $([$x:pat => $($expr:tt)+])* }
-        ) 
-        => {
-
-        #[allow(unused)]
-        fn $fn_name(
-            $(
-                $var_name : make_type_top!($($var_type)+)
-            ),*
-
-        ) -> make_type_top!($($type)+) {
-            |a| match a
-            {
-                $($x => define_expr!($($expr)+)),*
-            }
-        }
-    };
-}
-
-macro_rules! define_many {
-    ($([ $($def:tt)+ ])*) => {
-        $(
-            define2!{$($def)+}
-        )*
-
-        // call_many!{define, [] $($def)+}
-    };
-}
-
-// macro_rules! define_many {
-//     ([$($def:tt)+] $($defs:tt)*) => {
-//     // ($($def:tt)+) => {
-//         define!{$($def)+}
-//         define!{$($defs)+}
-//         // define_many!($($defs:tt)+)
-//     };
-// }
-
-
-macro_rules! define_expr {
-    ($x:ident -> $($expr:tt)+) => {
-        move |$x| define_expr!($($expr)+)
-    };
-    (do $($expr:tt)+) => {
-        mdo!($($expr)+)
-    };
-    ($expr:expr) => {
-        $expr
-    };
-}
-
-macro_rules! make_type {
-    ($t1:tt -> $($t2:tt)+) => {
-        impl Fn(make_type!($t1)) -> make_type!( $($t2)+ )
-    };
-    ($t1:ident $t2:ident) => {
-        $t1<$t2>
-    };
-    ($type:ty) => {
-        $type
-    };
-}
-
-macro_rules! make_type_top {
-    ($head:ident $($arg:tt)*) => {
-        make_type_gen!({head = $head} {args=} $($arg)*)
+impl<'a, A: 'a> Unwrap<'a> for Vec<A>
+{
+    type A = A;
+    type F = SymVec;
+    
+    fn coe(self) -> <Self::F as Functor<'a>>::of<Self::A> {
+        self
+    }
+    
+    fn uncoe(x: <Self::F as Functor<'a>>::of<Self::A>) -> Self {
+        x
     }
 }
 
-macro_rules! make_type_gen {
-    // ($t1:tt -> $($t2:tt)+) => {
-    //     impl Fn(make_type!($t1)) -> make_type!( $($t2)+ )
-    // };
-    // ({head=$head:ident} {args=} -> $($rest:tt)+) => {
-    //     impl Fn($head) -> make_type_top!($($rest)+)
-    // };
-    ({head=$head:ident} {args=$($arg:ident)*} -> $($rest:tt)+) => {
-        impl Fn($head$(<$arg>),*) -> make_type_top!($($rest)+)
-    };
-    ({head=$head:ident} {args=$($arg:ident)*} $cur:ident $($rest:tt)*) => {
-        make_type_gen!({head=$head} {args=$($arg)* $cur} $($rest)*)
-    };
-    // ({head=$head:ident} {args=} ) => {
-    //     $head
-    // };
-    ({head=$head:ident} {args=$($arg:ident)*} ) => {
-        $head$(<$arg>),*
-    };
-    ($type:ty) => {
-        $type
-    };
+
+impl<'a> Functor<'a> for SymVec
+{
+    type of<A: 'a> = Vec<A>;
+
+    define_many!
+    {
+        [ map for (A B : 'a) (F : Fn(A) -> B + 'a). (f : F) (a: Self[A]) : Self[B]
+        = a.into_iter().map(f).collect()
+        ]
+    }
 }
 
-macro_rules! type_and_term {
+impl<'a> Traversable<'a> for SymVec
+{
 
-    ($callback:ident, {args=$({$($args:tt)+})+} [$($type:tt)*] | $x:pat => $($expr:tt)+) => {
-        type_and_term!{$callback, {args=$({$($args)+})+} {type=$($type)*} {exprs=} [$x =>] $($expr)+ }
-    };
-
-    ($callback:ident,
-        {args=$({$($args:tt)+})+}
-        {type=$($type:tt)*}
-        { exprs= $([$x:pat => $($expr:tt)+])* }
-        [$cur_x:pat => $($cur_expr:tt)*]
-        | $y:pat => $($tail:tt)+
-    ) =>
+    define_many!
     {
-        type_and_term!{$callback, {args=$({$($args)+})+} {type=$($type)*} { exprs= $([$x => $($expr)+])* [$cur_x => $($cur_expr)+] } [$y =>] $($tail)+ }
-    };
-
-    ($callback:ident,
-        {args=$({$($args:tt)+})+}
-        {type=$($type:tt)*}
-        { exprs= $([$x:pat => $($expr:tt)+])* }
-        [$cur_x:pat => $($cur_expr:tt)+]
-        ) =>
-    {
-        $callback!{$({$($args)+})+ {type=$($type)*} { exprs= $([$x => $($expr)+])* [$cur_x => $($cur_expr)+] } }
-    };
-
-    ($callback:ident,
-        {args=$({$($args:tt)+})+}
-        {type=$($type:tt)*}
-        { exprs= $([$x:pat => $($expr:tt)+])* }
-        [$cur_x:pat => $($cur_expr:tt)*]
-        $head:tt $($tail:tt)*) =>
-    {
-        type_and_term!{$callback, {args=$({$($args)+})+} {type=$($type)*} { exprs= $([$x => $($expr)+])* } [$cur_x => $($cur_expr)* $head] $($tail)* }
-    };
-
-    ($callback:ident, {args=$({$($args:tt)+})+} [$($type:tt)*] = $($expr:tt)+) => {
-        $callback!{$({$($args)+})+ {type=$($type)*} {expr= $($expr)+} }
-    };
-
-    // ($callback:ident, $({$($args:tt)+})+ {type=$($type:tt)*} [$x:pat $($expr:tt)+] | $x:pat => $($expr:tt)+) => {
-    // };
-
-    ($callback:ident, {args=$({$($args:tt)+})+} [$($type:tt)*] $type0:tt $($expr:tt)+) => {
-        type_and_term!{$callback, {args=$({$($args)+})+} [$($type)* $type0] $($expr)+}
-    };
+        [ sequence for (A : 'a) (F : Applicative<'a>). (xs : Self[F[A]]) : F[Self[A]]
+        = Self::foldr(|a,b| F::funmap(F::map(|aa| |bb| append(bb, a), a))(b), F::pure(Vec::new()), xs)
+        ]
+    }
+    
+    fn foldr<A: 'a, B: 'a>(f: impl Fn(A,B) -> B, b: B, ta: Self::of<A>) -> B {
+        todo!()
+    }
 }
 
 
@@ -341,6 +215,8 @@ macro_rules! type_and_term {
 
 mod test
 {
+    use crate::{core::append, *};
+
     use super::{Monad, MonadObject};
 
     pub fn my_fun
@@ -388,6 +264,33 @@ mod test
            x <= x;
            y <= f(x);
            Some(y)
+        ]
+
+        [ mybind for 'a A B (M : Monad<'a>). (f : A -> M[B]) (x : M[A]) : M[B] = do
+            x <= x;
+            y <= f(x);
+            M::pure(y)
+        ]
+
+        [ mycomp for 'a (A B C : 'a) (M : Monad<'a>). 
+            (f : A -> M[B])
+            (g : B -> M[C])
+               : A -> M[C]
+            = a -> do b <= f(a); g(b)
+        ]
+        
+        [ mapM for 'a (A B : 'a + Copy) (M : Monad<'a>) (As : Iterator<Item=A>). (f : A -> M[B]) (xs: As) : M[Vec B]
+        = {
+            let mut res = M::pure(Vec::new());
+            for x in xs {
+                res = mdo!{
+                    res <= res;
+                    y <= f(x);
+                    M::pure(append(res.clone(), y))
+                };
+            }
+            res
+        }
         ]
 
     }
