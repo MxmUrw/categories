@@ -37,7 +37,6 @@ pub trait StrongMonad<'a> : Monad<'a>
 }
 
 
-
 ///////////////////////////////////////
 // Instances
 
@@ -93,3 +92,248 @@ pub fn mapm
 {
     xs.into_iter().map(f).fold(M::pure(Vec::new()), |xs, x| M::bind(M::merge(xs,x), |(xs,x)| M::pure(append(xs, x))))
 }
+
+
+
+////////////////////////////////////////
+// helpers
+
+macro_rules! mdo {
+    ($expr:expr) => {$expr};
+    (let $var:ident = $expr:expr; $($expr2:tt)+ ) => {
+        {
+            let $var = $expr;   
+            mdo!($($expr2)+)
+        }
+    };
+    ($var:ident <= $expr:expr; $($expr2:tt)+) => {
+        M::bind($expr, move |$var| mdo!($($expr2)+))
+    };
+}
+
+
+
+//-- definitions
+macro_rules! define {
+
+    ($fn_name:ident : $type:ty = $($tokens:tt)+) => {
+
+        #[allow(unused)]
+        fn $fn_name() -> $type {
+            define_expr!($($tokens)+)
+        }
+
+    };
+}
+
+macro_rules! define2 {
+    ($fn_name:ident : $($tokens:tt)+) => {
+        type_and_term!{define2callback, {args= {name=$fn_name} } [] $($tokens)+}
+    };
+}
+
+macro_rules! define2callback {
+
+    ({name = $fn_name:ident} {type = $($type:tt)+} {expr = $($expr:tt)+}) => {
+
+        #[allow(unused)]
+        fn $fn_name() -> make_type_top!($($type)+) {
+            define_expr!($($expr)+)
+        }
+
+    };
+
+    ({name = $fn_name:ident}
+         {type = $($type:tt)+} 
+         {exprs= $([$x:pat => $($expr:tt)+])* }
+        ) 
+        => {
+
+        #[allow(unused)]
+        fn $fn_name() -> make_type_top!($($type)+) {
+            |a| match a
+            {
+                $($x => define_expr!($($expr)+)),*
+            }
+        }
+    };
+}
+
+macro_rules! define_many {
+    ($([ $($def:tt)+ ])*) => {
+        $(
+            define2!{$($def)+}
+        )*
+
+        // call_many!{define, [] $($def)+}
+    };
+}
+
+// macro_rules! define_many {
+//     ([$($def:tt)+] $($defs:tt)*) => {
+//     // ($($def:tt)+) => {
+//         define!{$($def)+}
+//         define!{$($defs)+}
+//         // define_many!($($defs:tt)+)
+//     };
+// }
+
+
+macro_rules! define_expr {
+    ($x:ident -> $($expr:tt)+) => {
+        move |$x| define_expr!($($expr)+)
+    };
+    (do $expr:expr) => {
+        mdo!($expr)
+    };
+    ($expr:expr) => {
+        $expr
+    };
+}
+
+macro_rules! make_type {
+    ($t1:tt -> $($t2:tt)+) => {
+        impl Fn(make_type!($t1)) -> make_type!( $($t2)+ )
+    };
+    ($t1:ident $t2:ident) => {
+        $t1<$t2>
+    };
+    ($type:ty) => {
+        $type
+    };
+}
+
+macro_rules! make_type_top {
+    ($head:ident $($arg:tt)*) => {
+        make_type_gen!({head = $head} {args=} $($arg)*)
+    }
+}
+
+macro_rules! make_type_gen {
+    // ($t1:tt -> $($t2:tt)+) => {
+    //     impl Fn(make_type!($t1)) -> make_type!( $($t2)+ )
+    // };
+    // ({head=$head:ident} {args=} -> $($rest:tt)+) => {
+    //     impl Fn($head) -> make_type_top!($($rest)+)
+    // };
+    ({head=$head:ident} {args=$($arg:ident)*} -> $($rest:tt)+) => {
+        impl Fn($head$(<$arg>),*) -> make_type_top!($($rest)+)
+    };
+    ({head=$head:ident} {args=$($arg:ident)*} $cur:ident $($rest:tt)*) => {
+        make_type_gen!({head=$head} {args=$($arg)* $cur} $($rest)*)
+    };
+    // ({head=$head:ident} {args=} ) => {
+    //     $head
+    // };
+    ({head=$head:ident} {args=$($arg:ident)*} ) => {
+        $head$(<$arg>),*
+    };
+    ($type:ty) => {
+        $type
+    };
+}
+
+macro_rules! type_and_term {
+
+    ($callback:ident, {args=$({$($args:tt)+})+} [$($type:tt)*] | $x:pat => $($expr:tt)+) => {
+        type_and_term!{$callback, {args=$({$($args)+})+} {type=$($type)*} {exprs=} [$x =>] $($expr)+ }
+    };
+
+    ($callback:ident,
+        {args=$({$($args:tt)+})+}
+        {type=$($type:tt)*}
+        { exprs= $([$x:pat => $($expr:tt)+])* }
+        [$cur_x:pat => $($cur_expr:tt)*]
+        | $y:pat => $($tail:tt)+
+    ) =>
+    {
+        type_and_term!{$callback, {args=$({$($args)+})+} {type=$($type)*} { exprs= $([$x => $($expr)+])* [$cur_x => $($cur_expr)+] } [$y =>] $($tail)+ }
+    };
+
+    ($callback:ident,
+        {args=$({$($args:tt)+})+}
+        {type=$($type:tt)*}
+        { exprs= $([$x:pat => $($expr:tt)+])* }
+        [$cur_x:pat => $($cur_expr:tt)+]
+        ) =>
+    {
+        $callback!{$({$($args)+})+ {type=$($type)*} { exprs= $([$x => $($expr)+])* [$cur_x => $($cur_expr)+] } }
+    };
+
+    ($callback:ident,
+        {args=$({$($args:tt)+})+}
+        {type=$($type:tt)*}
+        { exprs= $([$x:pat => $($expr:tt)+])* }
+        [$cur_x:pat => $($cur_expr:tt)*]
+        $head:tt $($tail:tt)*) =>
+    {
+        type_and_term!{$callback, {args=$({$($args)+})+} {type=$($type)*} { exprs= $([$x => $($expr)+])* } [$cur_x => $($cur_expr)* $head] $($tail)* }
+    };
+
+    ($callback:ident, {args=$({$($args:tt)+})+} [$($type:tt)*] = $($expr:tt)+) => {
+        $callback!{$({$($args)+})+ {type=$($type)*} {expr= $($expr)+} }
+    };
+
+    // ($callback:ident, $({$($args:tt)+})+ {type=$($type:tt)*} [$x:pat $($expr:tt)+] | $x:pat => $($expr:tt)+) => {
+    // };
+
+    ($callback:ident, {args=$({$($args:tt)+})+} [$($type:tt)*] $type0:tt $($expr:tt)+) => {
+        type_and_term!{$callback, {args=$({$($args)+})+} [$($type)* $type0] $($expr)+}
+    };
+}
+
+
+
+
+
+
+mod test
+{
+    use super::Monad;
+
+    pub fn my_fun
+    <'a, M: Monad<'a>, A: 'a, B: 'a, C: 'a>
+    (f: impl Fn(A) -> M::of<B> + 'a, g: impl Fn(B) -> M::of<C> + 'a) -> impl FnOnce(A) -> M::of<C>
+    {
+        move |a| mdo!(
+            aa <= f(a);
+            bb <= g(aa);
+            M::pure(bb)
+        )
+    }
+
+    define!
+    {
+        double : impl Fn(i8) -> i8 = a -> a * 2
+    }
+
+    define!
+    {
+        triple : impl Fn(i8) -> i8 = do |a| a * 3
+    }
+
+    define_many!
+    {
+        [ double2 : i8 -> i8
+        | a => a * 2
+        ]
+
+        [ prod : i8 -> i8 -> i8
+        = a -> b -> a * b
+        ]
+
+        [ test : Option u8 -> u8
+        | Some(a) => 1
+        | None => 2
+        ]
+
+    }
+
+    #[test]
+    pub fn mytest() {
+        print!("{}", double2()(2));
+        // forward!(test_eq, []=);
+    }
+
+}
+

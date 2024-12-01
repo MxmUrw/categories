@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types)]
 #![feature(type_alias_impl_trait)]
+#![feature(impl_trait_in_fn_trait_return)]
 
 use core::{Functor, Monad, Unwrap};
 use std::{future::{self, Future}, ops::Deref, pin::Pin, time::Duration};
@@ -77,6 +78,7 @@ impl Monad<'static> for TaskF
 
 // impl<A> Functor for 
 // pub struct TaskResult<A>(Result)
+
 
 pub trait TaskMonad : MonadError<'static, anyhow::Error>
 {
