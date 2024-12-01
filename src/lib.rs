@@ -24,6 +24,14 @@ impl<A: 'static> Unwrap<'static> for Task<A>
 {
     type A = A;
     type F = TaskF;
+    
+    fn coe(self) -> <Self::F as Functor<'static>>::of<Self::A> {
+        self
+    }
+    
+    fn uncoe(x: <Self::F as Functor<'static>>::of<Self::A>) -> Self {
+        x
+    }
 }
 
 // fn map<'a, A: 'a ,B: 'a ,F>(f: F, a: Task<A>) -> Task<B>

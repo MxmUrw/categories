@@ -6,6 +6,9 @@ pub trait Unwrap<'a>
 {
     type A: 'a;
     type F : Functor<'a, of<Self::A> = Self>;
+
+    fn coe(self) -> <Self::F as Functor<'a>>::of<Self::A>;
+    fn uncoe(x: <Self::F as Functor<'a>>::of<Self::A>) -> Self;
 }
 
 pub trait Functor<'a>
@@ -16,6 +19,9 @@ pub trait Functor<'a>
         where F: Fn(A) -> B + 'a,
         A: 'a,
         B: 'a;
+
+    // fn coe<A>(a: A) -> <Self::of<A> as Unwrap<'a>>::A;
+    // fn uncoe<A>(a: <Self::of<A> as Unwrap<'a>>::A) -> A;
 }
 
 pub trait Monad<'a> : Functor<'a>
@@ -38,6 +44,27 @@ pub trait StrongMonad<'a> : Monad<'a>
 
 
 ///////////////////////////////////////
+// Type inference
+pub trait MonadObject<'a> : Unwrap<'a>
+{
+    fn obind<MB : Unwrap<'a, F = Self::F>, F: Fn(Self::A) -> MB +'a>(self, f: F) -> MB;
+}
+
+impl<'a, MA: Unwrap<'a>> MonadObject<'a> for MA
+where MA::F : Monad<'a>
+{
+    fn obind<MB : Unwrap<'a, F = MA::F>, Fun: Fn(Self::A) -> MB + 'a>(self, f: Fun) -> MB {
+        let x = MB::F::bind::<Self::A, MB::A, _>(self, move |x : Self::A| {
+            let y = f(x);
+            y.coe()
+            // <MA::F as Functor<'a>>::coe(y)
+        });
+        Unwrap::uncoe(x)
+    }
+}
+
+
+///////////////////////////////////////
 // Instances
 
 pub struct SymOption {}
@@ -46,6 +73,14 @@ impl<'a, A: 'a> Unwrap<'a> for Option<A>
 {
     type A = A;
     type F = SymOption;
+    
+    fn coe(self) -> <Self::F as Functor<'a>>::of<Self::A> {
+        self
+    }
+    
+    fn uncoe(x: <Self::F as Functor<'a>>::of<Self::A>) -> Self {
+        x
+    }
 }
 
 impl<'a> Functor<'a> for SymOption
@@ -107,7 +142,7 @@ macro_rules! mdo {
         }
     };
     ($var:ident <= $expr:expr; $($expr2:tt)+) => {
-        M::bind($expr, move |$var| mdo!($($expr2)+))
+        $expr.obind(move |$var| mdo!($($expr2)+))
     };
 }
 
@@ -127,30 +162,47 @@ macro_rules! define {
 }
 
 macro_rules! define2 {
-    ($fn_name:ident : $($tokens:tt)+) => {
-        type_and_term!{define2callback, {args= {name=$fn_name} } [] $($tokens)+}
+    // ($fn_name:ident : $($tokens:tt)+) => {
+    //     type_and_term!{define2callback, {args= {name=$fn_name} } [] $($tokens)+}
+    // };
+
+    ($fn_name:ident $(($var:ident : $($type:tt)+))* : $($tokens:tt)+) => {
+        type_and_term!{define2callback, {args= {name=$fn_name} {direct_vars= $(($var : $($type)+))*} } [] $($tokens)+}
     };
 }
 
 macro_rules! define2callback {
 
-    ({name = $fn_name:ident} {type = $($type:tt)+} {expr = $($expr:tt)+}) => {
+    ({name = $fn_name:ident} 
+        {direct_vars= $(($var_name:ident : $($var_type:tt)+))*}
+        {type = $($type:tt)+} {expr = $($expr:tt)+}) => {
 
         #[allow(unused)]
-        fn $fn_name() -> make_type_top!($($type)+) {
+        fn $fn_name(
+            $(
+                $var_name : make_type_top!($($var_type)+)
+            ),*
+
+        ) -> make_type_top!($($type)+) {
             define_expr!($($expr)+)
         }
 
     };
 
     ({name = $fn_name:ident}
+        {direct_vars= $(($var_name:ident : $($var_type:tt)+))*}
          {type = $($type:tt)+} 
          {exprs= $([$x:pat => $($expr:tt)+])* }
         ) 
         => {
 
         #[allow(unused)]
-        fn $fn_name() -> make_type_top!($($type)+) {
+        fn $fn_name(
+            $(
+                $var_name : make_type_top!($($var_type)+)
+            ),*
+
+        ) -> make_type_top!($($type)+) {
             |a| match a
             {
                 $($x => define_expr!($($expr)+)),*
@@ -183,8 +235,8 @@ macro_rules! define_expr {
     ($x:ident -> $($expr:tt)+) => {
         move |$x| define_expr!($($expr)+)
     };
-    (do $expr:expr) => {
-        mdo!($expr)
+    (do $($expr:tt)+) => {
+        mdo!($($expr)+)
     };
     ($expr:expr) => {
         $expr
@@ -289,7 +341,7 @@ macro_rules! type_and_term {
 
 mod test
 {
-    use super::Monad;
+    use super::{Monad, MonadObject};
 
     pub fn my_fun
     <'a, M: Monad<'a>, A: 'a, B: 'a, C: 'a>
@@ -306,6 +358,7 @@ mod test
     {
         double : impl Fn(i8) -> i8 = a -> a * 2
     }
+
 
     define!
     {
@@ -327,11 +380,22 @@ mod test
         | None => 2
         ]
 
+        [ sum (a: u8) (b: u8) : u8
+        = a + b
+        ]
+
+        [ bind (f : u8 -> Option u8) (x : Option u8) : Option u8 = do
+           x <= x;
+           y <= f(x);
+           Some(y)
+        ]
+
     }
 
     #[test]
     pub fn mytest() {
         print!("{}", double2()(2));
+        println!("{:?}", bind(|a| Some(a + 1), Some(7)))
         // forward!(test_eq, []=);
     }
 
