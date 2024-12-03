@@ -153,15 +153,6 @@ macro_rules! declare_many {
     };
 }
 
-// macro_rules! define_many {
-//     ([$($def:tt)+] $($defs:tt)*) => {
-//     // ($($def:tt)+) => {
-//         define!{$($def)+}
-//         define!{$($defs)+}
-//         // define_many!($($defs:tt)+)
-//     };
-// }
-
 
 #[macro_export]
 macro_rules! define_expr {

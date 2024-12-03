@@ -199,7 +199,7 @@ impl<'a> Traversable<'a> for SymVec
     define_many!
     {
         [ sequence for (A : 'a) (F : Applicative<'a>). (xs : Self[F[A]]) : F[Self[A]]
-        = Self::foldr(|a,b| F::funmap(F::map(|aa| |bb| append(bb, a), a))(b), F::pure(Vec::new()), xs)
+        = todo!() // Self::foldr(|a,b| F::funmap(F::map(|aa| |bb| append(bb, a), a))(b), F::pure(Vec::new()), xs)
         ]
     }
     

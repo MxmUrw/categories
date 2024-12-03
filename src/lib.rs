@@ -13,6 +13,9 @@ pub mod core;
 #[macro_use]
 pub mod macros;
 
+#[macro_use]
+pub mod type_macros;
+
 
 pub trait MonadError<'a, E> : Monad<'a>
 {
