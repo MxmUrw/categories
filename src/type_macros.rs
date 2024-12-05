@@ -56,7 +56,7 @@ enum Either<A,B> {
 
 macro_rules! eval_op {
     ($op:tt [$($arg0:tt)*]) => {
-        $($arg0)*
+        dispatch_operand!($($arg0)*)
     };
 
     (+ [$($head:tt)*] $($tail:tt)+) => {
@@ -198,8 +198,57 @@ macro_rules! parse_type_leaf {
 }
 
 macro_rules! eval_type_leaf {
-    ($single:tt) => { $single };
-    ($head:tt $($tail:tt)+) => { $head<$($tail),+> }
+    // ($single:tt) => { $single };
+    // ($head:tt $($tail:tt)+) => { $head<$($tail),+> }
+    ($($tail:tt)*) => { process_token_trees!( input={ $($tail)* } result={}) }
+}
+
+macro_rules! process_token_trees {
+
+    (input={ $head_functor:tt[$($head_args:tt)+] $($tail:tt)*} result={$($result:tt)*} ) => {
+        process_token_trees!(
+            input={$($tail)*}
+            result={ $($result)* (functor=($head_functor)($($head_args)+)) }
+        )
+    };
+
+    (input={ $head:tt $($tail:tt)*} result={$($result:tt)*} ) => {
+
+        process_token_trees!(
+            input={$($tail)*}
+            result={ $($result)* (token=($head)) }
+        )
+        
+    };
+
+    // (input={ ( $($head:tt)* ) $($tail:tt)*} result={$($result:tt)*} ) => {
+
+    //     process_token_trees!(
+    //         input={$($tail)*}
+    //         result={ $($result)* (parens=( $($head)* )) }
+    //     )
+        
+    // };
+
+    (input={} result={$($result:tt)*} ) => {
+        process_type_applications!($($result)*)
+    };
+}
+
+// macro_rules! process_token_trees_eval {
+//     ( $( ($category:tt = $($value:tt)* ) )* ) => { $( ( process_token_trees_single_eval!($category = $($value)* ) ) )*  }
+// }
+
+macro_rules! expand_tt {
+    (token=(($($value:tt)*))) => { eval_type!($($value)*) };
+    (token=($token:tt)) => { $token };
+    (functor=($head:tt)($($args:tt)*)) => { $head::of<eval_type!($($args)*)> }
+}
+
+macro_rules! process_type_applications {
+    (( $($single:tt)+ )) => { expand_tt!($($single)+) };
+    ( (token=($token:tt)) $( ( $($tail:tt)+ ) )* ) => { $token<$( expand_tt!($($tail)+) ),*> };
+    ( ($($head:tt)+) $( ( $($tail:tt)+ ) )* ) => { expand_tt!($($head)+)<$( expand_tt!($($tail)+) ),*> };
 }
 
 macro_rules! eval_type {
@@ -249,6 +298,17 @@ mod test
             eval_type!(i8 + i8 * i32 + i64),
             Either<i8, Either<(i8, i32), i64>>
         );
+
+        assert_type_eq!(
+            eval_type!(Option i8 + Option i64),
+            Either<Option<i8>, Option<i64>>
+        );
+
+        assert_type_eq!(
+            eval_type!(Option (Option i8)),
+            Option<Option<i8>>
+        );
+
     }
 
 }

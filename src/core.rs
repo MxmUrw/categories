@@ -82,6 +82,13 @@ where MA::F : Monad<'a>
 }
 
 
+fn opure<'a, MA: Unwrap<'a>>(arg: <MA as Unwrap<'a>>::A) -> MA 
+where MA::F : Monad<'a>
+{
+    MA::F::pure(arg)
+}
+
+
 ///////////////////////////////////////
 // Instances
 
@@ -226,7 +233,7 @@ mod test
         move |a| mdo!(
             aa <= f(a);
             bb <= g(aa);
-            M::pure(bb)
+            return bb
         )
     }
 
@@ -263,13 +270,13 @@ mod test
         [ bind (f : u8 -> Option u8) (x : Option u8) : Option u8 = do
            x <= x;
            y <= f(x);
-           Some(y)
+           return y
         ]
 
         [ mybind for 'a A B (M : Monad<'a>). (f : A -> M[B]) (x : M[A]) : M[B] = do
             x <= x;
             y <= f(x);
-            M::pure(y)
+            return y
         ]
 
         [ mycomp for 'a (A B C : 'a) (M : Monad<'a>). 
@@ -286,7 +293,7 @@ mod test
                 res = mdo!{
                     res <= res;
                     y <= f(x);
-                    M::pure(append(res.clone(), y))
+                    return append(res.clone(), y)
                 };
             }
             res

@@ -2,8 +2,12 @@
 ////////////////////////////////////////
 // helpers
 
+
 #[macro_export]
 macro_rules! mdo {
+    (return $($rest:tt)+) => {
+        crate::core::opure($($rest)+)
+    };
     ($expr:expr) => {$expr};
     (let $var:ident = $expr:expr; $($expr2:tt)+ ) => {
         {
