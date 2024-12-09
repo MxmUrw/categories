@@ -1,12 +1,15 @@
 #![allow(non_camel_case_types)]
 #![feature(type_alias_impl_trait)]
 #![feature(impl_trait_in_fn_trait_return)]
+#![feature(impl_trait_in_assoc_type)]
 
 use core::{Applicative, Functor, Monad, Unwrap};
 use std::{future::{self, Future}, ops::Deref, pin::Pin, time::Duration};
 use anyhow::{anyhow, Result};
 use futures::{FutureExt};
 use tokio::time::sleep;
+
+pub mod experimental;
 
 pub mod core;
 
