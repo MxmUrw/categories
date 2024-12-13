@@ -24,9 +24,9 @@
 
 const fn comb(xs: &[u8]) -> u8 {
     let mut y = 0;
-    for x in xs {
-        y += x
-    }
+    // for x in xs {
+    //     y += x
+    // }
     y
 }
 

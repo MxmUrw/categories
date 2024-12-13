@@ -4,7 +4,6 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(const_for)]
 #![feature(const_trait_impl)]
-#![feature(effects)]
 
 use core::{Applicative, Functor, Monad, Unwrap};
 use std::{future::{self, Future}, ops::Deref, pin::Pin, time::Duration};
