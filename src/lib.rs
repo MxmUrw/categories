@@ -12,7 +12,7 @@ use futures::{FutureExt};
 use tokio::time::sleep;
 
 pub mod experimental;
-
+pub mod examples;
 pub mod core;
 
 #[macro_use]

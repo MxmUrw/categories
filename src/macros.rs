@@ -38,7 +38,7 @@ macro_rules! define {
 }
 
 #[macro_export]
-macro_rules! define2 {
+macro_rules! define_fun {
     // ($fn_name:ident : $($tokens:tt)+) => {
     //     type_and_term!{define2callback, {args= {name=$fn_name} } [] $($tokens)+}
     // };
@@ -48,27 +48,40 @@ macro_rules! define2 {
     };
 
     ($callback:ident, $fn_name:ident [$($params:tt)*] for $param:ident $($rest:tt)+) => {
-        define2!{$callback, $fn_name [ $($params)* $param, ] for $($rest)+}
+        define_fun!{$callback, $fn_name [ $($params)* $param, ] for $($rest)+}
     };
 
     ($callback:ident, $fn_name:ident [$($params:tt)*] for $param:lifetime $($rest:tt)+) => {
-        define2!{$callback, $fn_name [ $($params)* $param, ] for $($rest)+}
+        define_fun!{$callback, $fn_name [ $($params)* $param, ] for $($rest)+}
     };
 
     ($callback:ident, $fn_name:ident [$($params:tt)*] for ($param_name:ident $($param_names:ident)* : $($param:tt)+) $($rest:tt)+) => {
-        define2!{$callback, $fn_name [ $($params)* $param_name : $($param)+, ] for ($($param_names)* : $($param)+) $($rest)+}
+        define_fun!{$callback, $fn_name [ $($params)* $param_name : $($param)+, ] for ($($param_names)* : $($param)+) $($rest)+}
     };
 
     ($callback:ident, $fn_name:ident [$($params:tt)*] for (: $($param:tt)+) $($rest:tt)+) => {
-        define2!{$callback, $fn_name [ $($params)* ] for $($rest)+}
+        define_fun!{$callback, $fn_name [ $($params)* ] for $($rest)+}
     };
 
     ($callback:ident, $fn_name:ident for $($rest:tt)+) => {
-        define2!{$callback, $fn_name [] for $($rest)+}
+        define_fun!{$callback, $fn_name [] for $($rest)+}
     };
 
     ($callback:ident, $fn_name:ident $(($var:ident : $($type:tt)+))* : $($tokens:tt)+) => {
         type_and_term!{$callback, {args= {name=$fn_name} {direct_vars= $(($var : $($type)+))*} {params=} } [] $($tokens)+}
+    };
+}
+
+#[macro_export]
+macro_rules! define_dispatch {
+    // defining a trait
+    (trait $($tokens:tt)*) => {
+
+    };
+
+    // catch-all is definition of a function
+    ($($tokens:tt)*) => {
+        define_fun!($($tokens)*)
     };
 }
 
@@ -140,10 +153,19 @@ macro_rules! define2callback {
 }
 
 #[macro_export]
+macro_rules! def {
+    ($([ $($def:tt)+ ])*) => {
+        $(
+            $crate::define_dispatch!{$($def)+}
+        )*
+    };
+}
+
+#[macro_export]
 macro_rules! define_many {
     ($([ $($def:tt)+ ])*) => {
         $(
-            $crate::define2!{define2callback, $($def)+}
+            $crate::define_fun!{define2callback, $($def)+}
         )*
         // call_many!{define, [] $($def)+}
     };
@@ -153,7 +175,7 @@ macro_rules! define_many {
 macro_rules! declare_many {
     ($([ $($def:tt)+ ])*) => {
         $(
-            $crate::define2!{declare2callback, $($def)+}
+            $crate::define_fun!{declare2callback, $($def)+}
         )*
         // call_many!{define, [] $($def)+}
     };
